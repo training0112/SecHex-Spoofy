@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using MetroFramework.Controls;
 using Microsoft.Toolkit.Uwp.Notifications;
 using System.Media;
+using System.Linq;
 
 namespace SecHex_GUI
 {
@@ -258,7 +259,7 @@ namespace SecHex_GUI
         }
 
 
-        public static string RandomId(int length)
+        public static string RandomId(int length, bool onlyLetter = false)
         {
             string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
             string result = "";
@@ -266,7 +267,7 @@ namespace SecHex_GUI
 
             for (int i = 0; i < length; i++)
             {
-                result += chars[random.Next(chars.Length)];
+                result += chars[random.Next(onlyLetter ? 25 : chars.Length)];
             }
 
             return result;
@@ -383,7 +384,7 @@ namespace SecHex_GUI
                 product_Click(sender, e);
                 BIOSReleaseDate_Click(sender, e);
                 MachineId_Click(sender, e);
-
+                ClearRegistryDataPoe_click(sender, e);
                 ShowNotification("All functions executed successfully.", NotificationType.Success);
             }
             else
@@ -553,18 +554,25 @@ namespace SecHex_GUI
                         {
                             using (RegistryKey NetworkAdapter = Registry.LocalMachine.OpenSubKey($"SYSTEM\\CurrentControlSet\\Control\\Class\\{{4d36e972-e325-11ce-bfc1-08002be10318}}\\{adapter}", true))
                             {
-                                if (NetworkAdapter.GetValue("BusType") != null)
+                                var isEthernet = NetworkAdapter.GetValue("BusType") != null;
+                                var productName = NetworkAdapter.GetValue("ProductName")?.ToString();
+                                var isTap = productName == null ? false : productName.StartsWith("TAP-Windows") || productName.StartsWith("NW TAP");
+                                if (isEthernet || isTap)
                                 {
                                     string adapterId = NetworkAdapter.GetValue("NetCfgInstanceId").ToString();
                                     string macBefore = NetworkAdapter.GetValue("NetworkAddress")?.ToString();
                                     string macAfter = RandomMac();
+                                    if (string.IsNullOrEmpty(macBefore))
+                                    {
+                                        NetworkAdapter.CreateSubKey("NetworkAddress");
+                                    }
                                     string logBefore = $"MAC Address {adapterId} - Before: {macBefore}";
                                     string logAfter = $"MAC Address {adapterId} - After: {macAfter}";
                                     SaveLogs("mac", logBefore, logAfter);
 
                                     NetworkAdapter.SetValue("NetworkAddress", macAfter);
-                                    LocalAreaConection(adapterId, false);
-                                    LocalAreaConection(adapterId, true);
+                                    //LocalAreaConection(adapterId, false);
+                                    //LocalAreaConection(adapterId, true);
                                 }
                             }
                         }
@@ -654,7 +662,7 @@ namespace SecHex_GUI
                         int month = rnd.Next(1, 13);
                         string monthStr = (month < 10) ? $"0{month}" : month.ToString();
 
-                        int year = rnd.Next(1990, 2023);
+                        int year = rnd.Next(2014, 2023);
                         string yearStr = year.ToString();
 
                         string randomDate = $"{monthStr}/{dayStr}/{yearStr}";
@@ -715,7 +723,7 @@ namespace SecHex_GUI
             try
             {
                 string originalName;
-                string newName = "SecHex-" + RandomId(7);
+                string newName = RandomId(12, onlyLetter: true);
                 using (RegistryKey computerNameKey = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName", true))
                 {
                     if (computerNameKey != null)
@@ -1121,6 +1129,33 @@ namespace SecHex_GUI
         private void Form1_Load(object sender, EventArgs e)
         {
 
+        }
+
+        public void ClearRegistryDataPoe_click(object sender, EventArgs e)
+        {
+            try
+            {
+                string registryKeyPath = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Notifications\Data";
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(registryKeyPath, true))
+                {
+                    if (key != null)
+                    {
+                        foreach (string valueName in key.GetValueNames())
+                        {
+                            key.DeleteValue(valueName);
+                        }
+                        ShowNotification("Clear Registry data poe successfully.", NotificationType.Success);
+                    }
+                    else
+                    {
+                        ShowNotification("Registry data registry key not found.", NotificationType.Error);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowNotification("An error occurred while clear registry data poe: " + ex.Message, NotificationType.Error);
+            }
         }
     }
 }
